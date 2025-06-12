@@ -5,7 +5,7 @@ const readlineSync = require("readline-sync"); // Diperlukan untuk input sheet
 
 // --- Fungsi Ekstraksi GSM (dari skrip kedua, lebih komprehensif) ---
 function extractGsmValue(desc) {
-  if (typeof desc !== "string") return "N/A";
+  if (typeof desc !== "string") return "-";
 
   let match;
   // Prioritized search for GSM patterns
@@ -34,35 +34,350 @@ function extractGsmValue(desc) {
   match = desc.match(/(\d[\d.,]*)\s*GR\/YD/i);
   if (match) return match[1].replace(",", ".");
 
-  return "N/A";
+  return "-";
 }
 
 // --- Fungsi Ekstraksi Width (dari skrip pertama) ---
 function extractWidthValue(desc) {
-  if (typeof desc !== "string") return "N/A";
+  if (typeof desc !== "string") return "-";
 
   let match;
-  match = desc.match(/(\d+[\d.,]*)\s*(inch|inches|\")/i);
+    // 1. Priority patterns for specific data examples - highest priority
+  // 60'' WIDE, 54'' WIDE, 58'' WIDE, 44'' WIDE, 36'' WIDE, etc.
+  match = desc.match(/(\d+[\d.,]*)\s*(?:''|"|inch|inches)\s+wide/i);
   if (match) {
-    const inches = parseFloat(match[1].replace(",", "."));
-    return (inches * 2.54).toFixed(2); // Konversi ke cm
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
   }
 
-  match = desc.match(/(\d+[\d.,]*)\s*cm/i);
-  if (match) return parseFloat(match[1].replace(",", ".")).toFixed(2); // Pastikan format desimal konsisten
-
-  match = desc.match(/(\d+[\d.,]*)\s*mm/i);
+  // 150CM WIDE, 152CM WIDE, 1M 32GSM WIDE, 1M 36GSM WIDE, 1.5M 60GSM WIDE, etc.
+  match = desc.match(/(\d+[\d.,]*)\s*(?:cm|m)\s+(?:\d+gsm\s+)?wide/i);
   if (match) {
-    const mm = parseFloat(match[1].replace(",", "."));
-    return (mm / 10).toFixed(2); // Konversi ke cm
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
   }
 
-  return "N/A";
+  // 22IN WIDTH, 18IN WIDTH, etc.
+  match = desc.match(/(\d+[\d.,]*)\s*(?:in|inch|inches)\s+width/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // CUT WIDTH and EDGE WIDTH patterns
+  // 150CM CUT WIDTH, 60 INCH EDGE WIDTH, etc.
+  match = desc.match(/(\d+[\d.,]*)\s*(?:cm|inch|inches|''|")\s+(?:cut\s+width|edge\s+width)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // WIDTH FROM patterns
+  // WIDTH FROM 40", etc.
+  match = desc.match(/width\s+from\s+(\d+[\d.,]*)\s*(?:''|"|inch|inches)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // NON-UNIFORM WIDTH patterns with ranges
+  // NON-UNIFORM WIDTH (48-60 INCHES), etc.
+  match = desc.match(/non-uniform\s+width\s*\(\s*(\d+[\d.,]*)\s*-\s*\d+[\d.,]*\s*(?:inches|inch|''|")\s*\)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // Special dimensional patterns
+  // 30GSM*10MM(WIDTH), etc.
+  match = desc.match(/\*(\d+[\d.,]*)\s*mm\s*\(\s*width\s*\)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 2. Width context with inch patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 65", WIDTH: 50", WIDTH 70", WIDTH65", 50 inch WIDE, WIDE 60", 65" WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*(?:inch|inches|\")|width\s+(\d+[\d.,]*)\s*(?:inch|inches|\")|width(\d+[\d.,]*)\s*(?:inch|inches|\")|(\d+[\d.,]*)\s*(?:inch|inches|\'\')\s*wide|wide\s+(\d+[\d.,]*)\s*(?:inch|inches|\")|(\d+[\d.,]*)\s*(?:inch|inches|\")\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 3. Width context with meter patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 1.5M, WIDTH: 2M, WIDTH 1.2M, WIDTH1.5M, 2 meter WIDE, WIDE 1M, 1.5M WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*(?:m|meter|metres?)|width\s+(\d+[\d.,]*)\s*(?:m|meter|metres?)|width(\d+[\d.,]*)\s*(?:m|meter|metres?)|(\d+[\d.,]*)\s*(?:m|meter|metres?)\s*wide|wide\s+(\d+[\d.,]*)\s*(?:m|meter|metres?)|(\d+[\d.,]*)\s*(?:m|meter|metres?)\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 4. Width context with foot/feet patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 5ft, WIDTH: 3ft, WIDTH 4ft, WIDTH5ft, 3 feet WIDE, WIDE 2ft, 5ft WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*(?:ft|foot|feet)|width\s+(\d+[\d.,]*)\s*(?:ft|foot|feet)|width(\d+[\d.,]*)\s*(?:ft|foot|feet)|(\d+[\d.,]*)\s*(?:ft|foot|feet)\s*wide|wide\s+(\d+[\d.,]*)\s*(?:ft|foot|feet)|(\d+[\d.,]*)\s*(?:ft|foot|feet)\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 5. Width context with yard patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 2yd, WIDTH: 1yd, WIDTH 3yd, WIDTH2yd, 1 yard WIDE, WIDE 2yd, 2yd WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*(?:yd|yards?)|width\s+(\d+[\d.,]*)\s*(?:yd|yards?)|width(\d+[\d.,]*)\s*(?:yd|yards?)|(\d+[\d.,]*)\s*(?:yd|yards?)\s*wide|wide\s+(\d+[\d.,]*)\s*(?:yd|yards?)|(\d+[\d.,]*)\s*(?:yd|yards?)\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 6. Width context with centimeter patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 150cm, WIDTH: 100cm, WIDTH 120cm, WIDTH150cm, 100 cm WIDE, WIDE 80cm, 150cm WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*cm|width\s+(\d+[\d.,]*)\s*cm|width(\d+[\d.,]*)\s*cm|(\d+[\d.,]*)\s*cm\s*wide|wide\s+(\d+[\d.,]*)\s*cm|(\d+[\d.,]*)\s*cm\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 7. Width context with millimeter patterns - all variations including [angka][unit] WIDTH
+  // WIDTH = 1500mm, WIDTH: 1000mm, WIDTH 1200mm, WIDTH1500mm, 1000 mm WIDE, WIDE 800mm, 1500mm WIDTH, etc.
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*mm|width\s+(\d+[\d.,]*)\s*mm|width(\d+[\d.,]*)\s*mm|(\d+[\d.,]*)\s*mm\s*wide|wide\s+(\d+[\d.,]*)\s*mm|(\d+[\d.,]*)\s*mm\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 8. Width context with inch patterns (handles '' apostrophe variations)
+  // 60'', 54'', 58'', etc.
+  match = desc.match(/(\d+[\d.,]*)\s*\'\'\s*wide/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 9. Width context with IN patterns (22IN, 18IN, etc.)
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)\s*in|width\s+(\d+[\d.,]*)\s*in|width(\d+[\d.,]*)\s*in|(\d+[\d.,]*)\s*in\s*width)/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+
+  // 10. Width context with GSM patterns (like "1M 32GSM WIDE")
+  match = desc.match(/(\d+[\d.,]*)\s*m\s+\d+gsm\s*wide/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 11. Width context WITHOUT units - all variations 
+  // WIDTH = 150, WIDTH: 100, WIDTH 120, WIDTH150, 150 WIDE, WIDE 100, 150WIDTH, etc.
+  // Also handle cases like "WIDTH 150//40G" where GSM follows, and "60 WIDTH"
+  match = desc.match(/(?:width\s*[=:]\s*(\d+[\d.,]*)|width\s+(\d+[\d.,]*)|width(\d+[\d.,]*)|(\d+[\d.,]*)\s*wide|wide\s+(\d+[\d.,]*)|(\d+[\d.,]*)width|(\d+[\d.,]*)\s+width)(?!\s*(?:inch|inches|\"|\'\'|in|m|meter|metres?|ft|foot|feet|yd|yards?|cm|mm|μm|microns?|micrometers?))/i);
+  if (match) {
+    const value = match[1] || match[2] || match[3] || match[4] || match[5] || match[6] || match[7];
+    if (value) {
+      return parseFloat(value.replace(",", ".")).toFixed(2);
+    }
+  }
+  // 12. Additional WIDTH FROM patterns (for cases not caught by priority patterns)
+  // "WIDTH FROM 40"", "WIDTH FROM 48"
+  match = desc.match(/width\s+from\s+(\d+[\d.,]*)\s*(?:inch|inches|\"|\'\')?\b/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 13. Range patterns in parentheses
+  // WIDTH (45"-72"), WIDTH (12CM~26CM), etc.
+  match = desc.match(/width\s*\(\s*(\d+[\d.,]*)\s*(?:inch|inches|\")\s*-\s*(\d+[\d.,]*)\s*(?:inch|inches|\")\s*\)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  match = desc.match(/width\s*\(\s*(\d+[\d.,]*)\s*cm\s*~\s*(\d+[\d.,]*)\s*cm\s*\)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 14. CUT WIDTH patterns
+  // "150CM CUT WIDTH", "152CM CUT WIDTH"
+  match = desc.match(/(\d+[\d.,]*)\s*cm\s+cut\s+width/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 15. EDGE WIDTH patterns  
+  // "60 INCH EDGE WIDTH"
+  match = desc.match(/(\d+[\d.,]*)\s*(?:inch|inches)\s+edge\s+width/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 16. Complex patterns with parentheses and multiple values
+  // 152.4 CM (60 IN) WIDE, 150CM (+/-5CM) WIDE, etc.
+  match = desc.match(/(\d+[\d.,]*)\s*cm\s*\([^)]*\)\s*wide/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  match = desc.match(/(\d+[\d.,]*)\s*(?:inch|inches|\"|\'\')?\s*\([^)]*\)\s*wide/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 17. Patterns with slashes
+  // 35/36'' WIDE, patterns with slashes
+  match = desc.match(/(\d+[\d.,]*)\s*\/\s*\d+[\d.,]*\s*(?:inch|inches|\'\')\s*wide/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  // 18. Small width patterns
+  // "WIDTH LESS THAN 10CM", "10MM SMALL WIDTH"
+  match = desc.match(/width\s+less\s+than\s+(\d+[\d.,]*)\s*cm/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+
+  match = desc.match(/(\d+[\d.,]*)\s*mm\s+small\s+width/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }
+  // 19. Dimensional patterns (LENGTH*WIDTH)
+  // "320*300MM (LENGTH*WIDTH)", "80*260MM (LENGTH * WIDTH)"
+  match = desc.match(/\d+[\d.,]*\*(\d+[\d.,]*)\s*mm\s*\(\s*length\s*\*\s*width\s*\)/i);
+  if (match) {
+    return parseFloat(match[1].replace(",", ".")).toFixed(2);
+  }  // 20. Four-step fallback extraction when no WIDTH/WIDE keywords present
+  // Step 1: Check for WIDTH/WIDE keywords first (already handled above)
+  // Step 2-4: Only if no WIDTH or WIDE found in the description
+  if (!/\b(?:width|wide)\b/i.test(desc)) {
+    
+    // Step 2: Standard [angka][unit] with spaces
+    // Inches (most common for width)
+    match = desc.match(/\b(\d+[\d.,]*)\s+(?:''|"|inch|inches|in)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Centimeters
+    match = desc.match(/\b(\d+[\d.,]*)\s+cm\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Meters
+    match = desc.match(/\b(\d+[\d.,]*)\s+(?:m|meter|metres?)\b/i);
+    if (match) {
+      const value = parseFloat(match[1].replace(",", "."));
+      return value.toFixed(2);
+    }
+    
+    // Millimeters
+    match = desc.match(/\b(\d+[\d.,]*)\s+mm\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Feet
+    match = desc.match(/\b(\d+[\d.,]*)\s+(?:ft|foot|feet)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Yards
+    match = desc.match(/\b(\d+[\d.,]*)\s+(?:yd|yards?)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Step 3: [angka][unit] without space in front (concatenated at start)
+    // Examples: 40IN, 150CM, 80MM (but not 80MMGSM), 1.5M, 5FT, 2YD
+    
+    // Inches without space in front
+    match = desc.match(/\b(\d+[\d.,]*)(?:''|"|inch|inches|in)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Centimeters without space in front
+    match = desc.match(/\b(\d+[\d.,]*)cm\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Meters without space in front
+    match = desc.match(/\b(\d+[\d.,]*)(?:m|meter|metres?)\b/i);
+    if (match) {
+      const value = parseFloat(match[1].replace(",", "."));
+      return value.toFixed(2);
+    }
+    
+    // Millimeters without space in front (avoid GSM conflicts)
+    match = desc.match(/\b(\d+[\d.,]*)mm\b(?!.*gsm)/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Feet without space in front
+    match = desc.match(/\b(\d+[\d.,]*)(?:ft|foot|feet)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Yards without space in front
+    match = desc.match(/\b(\d+[\d.,]*)(?:yd|yards?)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Step 4: [angka][unit] without space behind (concatenated patterns)
+    // Examples: 35G40IN, PPU.70", 80MM40GSM - extract the second number+unit
+    
+    // Extract inch values from concatenated strings like 35G40IN, PPU.70"
+    match = desc.match(/(?:\d+[A-Z]*\.?)(\d+[\d.,]*)(?:''|"|IN|INCH|INCHES)\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Extract CM values from concatenated strings
+    match = desc.match(/(?:\d+[A-Z]*\.?)(\d+[\d.,]*)CM\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Extract M values from concatenated strings
+    match = desc.match(/(?:\d+[A-Z]*\.?)(\d+[\d.,]*)M\b/i);
+    if (match) {
+      const value = parseFloat(match[1].replace(",", "."));
+      return value.toFixed(2);
+    }
+    
+    // Extract MM values from concatenated strings (but avoid GSM conflicts)
+    match = desc.match(/(?:^|[^G])(\d+[\d.,]*)MM\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+    
+    // Extract FT values from concatenated strings
+    match = desc.match(/(?:\d+[A-Z]*\.?)(\d+[\d.,]*)FT\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+      // Extract YD values from concatenated strings
+    match = desc.match(/(?:\d+[A-Z]*\.?)(\d+[\d.,]*)YD\b/i);
+    if (match) {
+      return parseFloat(match[1].replace(",", ".")).toFixed(2);
+    }
+  }
+
+  return "-";
 }
 
 // --- Fungsi Ekstraksi ITEM (dari skrip kedua) ---
 function extractItemTypeAndPattern(desc) {
-  if (typeof desc !== "string") return { item: "N/A", pattern: "" };
+  if (typeof desc !== "string") return { item: "-", pattern: "" };
   const descUpper = desc.toUpperCase();
 
   // Priority 1: AT (Air Thru)
@@ -119,330 +434,99 @@ function extractItemTypeAndPattern(desc) {
   // Priority 5: Nonwoven (generic)
   const nonwovenPattern = /NON-WOVEN(?:\sFABRIC)?|NON\sWOVEN(?:\sFABRIC)?|NONWOVEN(?:\sFABRIC)?/i;
   if (nonwovenPattern.test(descUpper)) {
-    const matchedPattern = descUpper.match(nonwovenPattern);
-    return { item: "Nonwoven", pattern: matchedPattern ? matchedPattern[0] : "" };
+    const matchedPattern = descUpper.match(nonwovenPattern);    return { item: "Nonwoven", pattern: matchedPattern ? matchedPattern[0] : "" };
   }
 
-  return { item: "N/A", pattern: "" };
+  return { item: "-", pattern: "" };
 }
 
 // --- Fungsi Ekstraksi ADD ON (dari skrip kedua) ---
+
 function extractAddOnFromList(desc) {
   if (typeof desc !== "string") return "-";
   const descUpper = desc.toUpperCase();
-  let foundAddOns = new Set();
-
-  const specificCoatings = ["PU Coated", "PVC Coated", "PE Coated", "HDPE Coated", "Thermoplastic Coated"];
-
-  const addOnDefinitions = [
-    { keywords: [/\bPU\sCOATED\b/i, /\bPOLYURETHANE\sCOATED\b/i], output: "PU Coated" },
-    { keywords: [/\bPVC\sCOATED\b/i, /\bVINYL\sCHLORIDE\s\(PVC\sPLASTIC\)\b/i], output: "PVC Coated" },
-    { keywords: [/\bPE\sCOATED\b/i], output: "PE Coated" },
-    { keywords: [/\bHDPE\s(?:GLUE\sON\sTHE\sSURFACE|COATED)\b/i], output: "HDPE Coated" },
-    { keywords: [/\bTHERMOPLASTIC\s(?:NYLON\sPA|ADHESIVE|COATED)\b/i], output: "Thermoplastic Coated" },
-    { keywords: [/\bLAMINATED\b/i, /\bMULTI-LAYER\sLAMINATED\b/i], output: "Laminated", negations: [/\bNOT\sLAMINATED\b/i, /\bUNLAMINATED\b/i] },
-    { keywords: [/\bCOATED\b/i, /\bSURFACE\sCOATED\b/i], output: "Coated", negations: [/\bNOT\sCOATED\b/i, /\bUNCOATED\b/i, /\bNOT\sCOATED\sWITH\sGLUE\b/i] },
-    { keywords: [/\bIMPREGNATED\b/i, /\bCHEMICALLY\sIMPREGNATED\b/i, /\bSOAKED\b/i], output: "Impregnated", negations: [/\bNOT\sIMPREGNATED\b/i, /\bUNIMPREGNATED\b/i] },
-    { keywords: [/\bPERFORATED\b/i, /\bPUNCHED\b/i, /\bNEEDLE-PUNCHED\b/i, /\bNEEDLE\sPUNCHED\b/i], output: "Perforated" },
-    { keywords: [/\bEMBOSSED\b/i, /\bTEXTURED\b/i, /\b3D\sSINGLE\sPEARL\sEMBOSSING\b/i, /\bSINGLE\sPEARL\sEMBOSSING\b/i, /\bPEARL\sEMBOSSING\b/i], output: "Embossed" },
-    { keywords: [/\bULTRASONIC\sSEALED\b/i], output: "Ultrasonic Sealed" },
-    { keywords: [/\bHEAT\sSEALED\b/i, /\bHOT\sMELT\b/i], output: "Heat Sealed" },
-    { keywords: [/\bREINFORCED\b/i], output: "Reinforced" },
-    { keywords: [/\bPRESSED\b/i, /\bCOMPRESSED\b/i], output: "Pressed" },
-    { keywords: [/\bNON-SLIP\b/i, /\bANTI-SLIP\b/i, /\bNON-STICK\b/i], output: "Non-Slip" },
-    { keywords: [/\bANTISTATIC\b/i, /\bANTI-STATIC\b/i, /\bESD\b/i, /\bELECTROSTATIC\sFILTER\b/i], output: "Antistatic" },
-    { keywords: [/\bHILOFT\b/i, /\bHIGH\sLOFT\b/i], output: "High Loft" },
-    { keywords: [/\bLOW\sLOFT\b/i], output: "Low Loft" },
-    { keywords: [/\bBREATHABLE\b/i, /\bAIR\sPERMEABLE\b/i, /\bFULL\sBREATHABLE\b/i], output: "Breathable" },
-    { keywords: [/\bNON-BREATHABLE\b/i], output: "Non-Breathable" },
-    { keywords: [/\bHYDROPHILIC\b/i, /\bLEG\sHI\b/i, /\bTOP\sHI\b/i, /\bCARRIER\sHI\b/i], output: "Hydrophilic" },
-    { keywords: [/\bHYDROPHOBIC\b/i, /\bLEG\sHO\b/i, /\bEAR\sHO\b/i, /\bST\sHO\b/i], output: "Hydrophobic" },
-    { keywords: [/\bNON-ABSORBENT\b/i], output: "Non-Absorbent" },
-    { keywords: [/\bANTIMICROBIAL\b/i, /\bANTI-MICROBIAL\b/i], output: "Antimicrobial" },
-    { keywords: [/\bANTIBACTERIAL\b/i, /\bANTI-BACTERIAL\b/i], output: "Antibacterial" },
-    { keywords: [/\bANTIVIRAL\b/i, /\bANTI-VIRAL\b/i], output: "Antiviral" },
-    { keywords: [/\bFLAME\sRETARDANT\b/i, /\bFIRE\sRESISTANT\b/i], output: "Flame Retardant" },
-    { keywords: [/\bUV\sSTABILIZED\b/i, /\bUV\sRESISTANT\b/i], output: "UV Stabilized" },
-    { keywords: [/\bOIL\sABSORBENT\b/i], output: "Oil Absorbent" },
-    { keywords: [/\bOIL\sREPELLENT\b/i], output: "Oil Repellent" },
-    { keywords: [/\bCHEMICAL\sRESISTANT\b/i, /\bALCOHOL-RESISTANT\b/i], output: "Chemical Resistant" },
-    { keywords: [/\bANTIFUNGAL\b/i, /\bMOLD\sRESISTANT\b/i], output: "Antifungal" },
-    { keywords: [/\bODOR\sCONTROL\b/i, /\bDEODORIZING\b/i], output: "Odor Control" },
-    { keywords: [/\bANTI-MILDEW\b/i], output: "Anti-Mildew" },
-    { keywords: [/\bCONDUCTIVE\sFABRIC\b/i], output: "Conductive" },
-    { keywords: [/\bEXTRA\sSOFT\b/i, /\bSUPER\sSOFT\b/i, /\bULTRA\sSOFT\b/i], output: "Extra Soft" },
-    { keywords: [/\bCOTTON\sSOFT\b/i], output: "Cotton Soft" },
-    { keywords: [/\bSOFT\b/i], output: "Soft" },
-    { keywords: [/\bSMOOTH\b/i], output: "Smooth" },
-    { keywords: [/\bSILKY\sFEEL\b/i], output: "Silky Feel" },
-    { keywords: [/\bMATTE\b/i], output: "Matte" },
-    { keywords: [/\bGLOSSY\b/i, /\bSHINY\b/i], output: "Glossy" },
-    { keywords: [/\bSTIFF\b/i, /\bFIRM\b/i, /\bHARD\b/i], output: "Stiff" },
-    { keywords: [/\bANTI-WRINKLE\b/i, /\bWRINKLE\sRESISTANT\b/i], output: "Anti-Wrinkle" },
-    { keywords: [/\bFLEECE-LIKE\b/i], output: "Fleece-Like" },
-    { keywords: [/\bVELVETY\b/i, /\bSUPERFINE\sVELVET\b/i], output: "Velvety" },
-    { keywords: [/\bPLUSH\b/i], output: "Plush" },
-    { keywords: [/\bDUST-FREE\b/i, /\bANTI\sDUST\b/i], output: "Dust-Free" },
-    { keywords: [/\bLOW\sLINT\b/i], output: "Low Lint" },
-    { keywords: [/\bANTI-PILLING\b/i], output: "Anti-Pilling" },
-    { keywords: [/\bANTI-STRETCH\b/i], output: "Anti-Stretch" },
-    { keywords: [/\bPRINTED\b/i, /\bPATTERNED\b/i], output: "Printed", negations: [/\bUNPRINTED\b/i] },
-    { keywords: [/\bTWO-TONE\b/i, /\bBICOLOR\b/i], output: "Two-Tone" },
-    { keywords: [/\bREFLECTIVE\b/i], output: "Reflective" },
-    { keywords: [/\bFLUORESCENT\b/i], output: "Fluorescent" },
-    { keywords: [/\bDYED\b/i], output: "Dyed", negations: [/\bUNDYED\b/i, /\bUNBLEACHED,\sUNDYED\b/i] },
-    { keywords: [/\bCOLORED\b/i, /\bCOLOUR\b/i], output: "Colored", negations: [/\bUNCOLORED\b/i] },
-    { keywords: [/\bMEDICAL\sGRADE\b/i, /\bMEDICAL\sUSE\b/i, /\bAMMI\sLEVEL\s\d+\b/i], output: "Medical Grade" },
-    { keywords: [/\bFOOD\sGRADE\b/i], output: "Food Grade" },
-    { keywords: [/\bECO-FRIENDLY\b/i, /\bRECYCLED\b/i, /\bREC\sPOLYESTER\b/i], output: "Eco-Friendly" },
-    { keywords: [/\bBIODEGRADABLE\b/i, /\bCOMPOSTABLE\b/i], output: "Biodegradable" },
-    { keywords: [/\bWATERPROOF\b/i, /\bWPN\sINSOLE\b/i], output: "Waterproof" },
-    { keywords: [/\bWATER\sRESISTANT\b/i, /\bWATER\sREPELLENT\b/i], output: "Water Resistant" },
-    { keywords: [/\bCHEMICAL\sFREE\b/i], output: "Chemical Free" },
-    { keywords: [/\bDUSTPROOF\b/i], output: "Dustproof" },
-    { keywords: [/\bHIGH\sTENSILE\sSTRENGTH\b/i], output: "High Tensile Strength" },
-    { keywords: [/\bHIGH\sELONGATION\b/i], output: "High Elongation" },
-    { keywords: [/\bELASTICITY\b/i, /\bSTRETCHY\b/i], output: "Elasticity" },
-    { keywords: [/\bULTRA\sLIGHTWEIGHT\b/i], output: "Ultra Lightweight" },
-    { keywords: [/\bLIGHTWEIGHT\b/i], output: "Lightweight" },
-    { keywords: [/\bSOUND\sABSORBING\b/i, /\bSOUND\sINSULATING\b/i, /\bNOISE-PROOF\b/i], output: "Sound Absorbing" },
-    { keywords: [/\bHEAT\sINSULATING\b/i, /\bTHERMAL\sINSULATING\b/i], output: "Heat Insulating" },
-    { keywords: [/\bFILM\b/i], output: "Film", negations: [/NON-WOVEN\sFILM/i, /LAMINATED\sPE\sFILM/i] },
-    {
-      keywords: [/\bADHESIVE\b/i, /\bGLUE\b/i, /\bSELF-ADHESIVE\b/i, /\bCONSTRUCTION\sGLUE\b/i, /\bFABRIC\sGLUE\b/i, /\bWITH\sGLUE\b/i, /\bGLUED\b/i, /\bADHESIVE\sLAYER\b/i, /\bDOUBLE-SIDED\sTAPE\b/i],
-      output: "Adhesive",
-      negations: [/\bNOT\sCOATED\sWITH\sGLUE\b/i],
-    },
-    { keywords: [/\bFIBERFILL\b/i], output: "Fiberfill" },
-    { keywords: [/\bMESH\b/i, /\bWEB\b/i], output: "Mesh" },
-    { keywords: [/\bFAUX\sLEATHER\b/i, /\bSYNTHETIC\sLEATHER\b/i, /\bIMITATION\sLEATHER\b/i, /\bLEATHERETTE\b/i], output: "Faux Leather" },
-  ];
-
-  const globalNegationComplexRegex = /\bNOT\sIMPREGNATED,\sCOATED\sOR\sLAMINATED\b/i;
-  const globalNegationUnUnUnRegex = /\bUNIMPREGNATED,\sUNCOATED,\sUNLAMINATED\b/i;
-  const globalNegationNotImpOrCoatRegex = /\bNOT\sIMPREGNATED\sOR\sCOATED\b/i;
-  const globalNegationUnImpAndUnCoatRegex = /\bUNIMPREGNATED\sAND\sUNCOATED\b/i;
-
-  function isGloballyNegated(featureName) {
-    if (globalNegationComplexRegex.test(descUpper) && (featureName === "Impregnated" || featureName === "Coated" || featureName === "Laminated")) return true;
-    if (globalNegationUnUnUnRegex.test(descUpper) && (featureName === "Impregnated" || featureName === "Coated" || featureName === "Laminated")) return true;
-    if (globalNegationNotImpOrCoatRegex.test(descUpper) && (featureName === "Impregnated" || featureName === "Coated")) return true;
-    if (globalNegationUnImpAndUnCoatRegex.test(descUpper) && (featureName === "Impregnated" || featureName === "Coated")) return true;
-    return false;
-  }
-
-  function isAffirmedOutsideGlobalNegation(featureName, keywordRegex) {
-    const cleanedDesc = descUpper
-      .replace(globalNegationComplexRegex, " G_NEG_ICL ")
-      .replace(globalNegationUnUnUnRegex, " G_NEG_UUU ")
-      .replace(globalNegationNotImpOrCoatRegex, " G_NEG_IC ")
-      .replace(globalNegationUnImpAndUnCoatRegex, " G_NEG_UU ");
-    return keywordRegex.test(cleanedDesc);
-  }
-
-  for (const def of addOnDefinitions) {
-    let applyAddon = false;
-    let keywordMatched = null;
-
-    for (const keyword of def.keywords) {
-      if (keyword.test(descUpper)) {
-        keywordMatched = keyword;
-        applyAddon = true;
-        break;
-      }
-    }
-
-    if (applyAddon) {
-      let negatedByKeywordSpecific = false;
-      if (def.negations) {
-        for (const negation of def.negations) {
-          if (negation.test(descUpper)) {
-            if (def.output === "Adhesive" && negation.source.includes("NOT\\sCOATED\\sWITH\\sGLUE")) {
-              const tempDescNoNegation = descUpper.replace(negation, "");
-              if (def.keywords.some((k) => k.test(tempDescNoNegation))) {
-                continue;
-              }
-            }
-            negatedByKeywordSpecific = true;
-            break;
-          }
-        }
-      }
-      if (negatedByKeywordSpecific) {
-        applyAddon = false;
-      }
-
-      if (applyAddon && (def.output === "Impregnated" || def.output === "Coated" || def.output === "Laminated")) {
-        if (isGloballyNegated(def.output)) {
-          let isSpecificType = false;
-          if (def.output === "Coated") {
-            isSpecificType = specificCoatings.includes(def.output);
-            if (!isSpecificType) {
-              isSpecificType = specificCoatings.some((sc) => addOnDefinitions.find((d) => d.output === sc)?.keywords.some((k) => k.test(descUpper)));
-            }
-          }
-          if (!isSpecificType && keywordMatched && !isAffirmedOutsideGlobalNegation(def.output, keywordMatched)) {
-            applyAddon = false;
-          }
-        }
-      }
-
-      if (applyAddon && def.output === "Film" && /LAMINATED\s(?:PE\s)?FILM/i.test(descUpper)) {
-        if (foundAddOns.has("Laminated") || foundAddOns.has("PE Coated")) {
-          let filmIsStandalone = false;
-          const filmMatches = [...descUpper.matchAll(/\bFILM\b/gi)];
-          for (const filmMatch of filmMatches) {
-            const surroundingText = descUpper.substring(Math.max(0, filmMatch.index - 20), Math.min(descUpper.length, filmMatch.index + filmMatch[0].length + 20));
-            if (!/LAMINATED\s(?:PE\s)?FILM/i.test(surroundingText) && !/NON-WOVEN\sFILM/i.test(surroundingText)) {
-              filmIsStandalone = true;
-              break;
-            }
-          }
-          if (!filmIsStandalone) applyAddon = false;
-        }
-      }
-
-      if (applyAddon) {
-        foundAddOns.add(def.output);
-      }
-    }
-  }
-
   const colors = [
-    { name: "Light Beige", pattern: /\bLIGHT\sBEIGE\b/i },
-    { name: "Silver Gray", pattern: /\bSILVER\sGRAY\b/i },
-    { name: "Sky Blue", pattern: /\bSKY\sBLUE\b/i },
-    { name: "Pale Mauve", pattern: /\bPALE\sMAUVE\b/i },
-    { name: "Monk's Robe", pattern: /\bMONK'S\sROBE\b/i },
-    { name: "Dress Blue", pattern: /\bDRESS\sBLUE\b/i },
-    { name: "China Blue", pattern: /\bCHINA\sBLUE\b/i },
-    { name: "Blue Nights", pattern: /\bBLUE\sNIGHTS\b/i },
-    { name: "Chateau Rose", pattern: /\bCHATEAU\sROSE\b/i },
-    { name: "Cloud Dancer", pattern: /\bCLOUD\sDANCER\b/i },
-    { name: "Moonlite Mauve", pattern: /\bMOONLITE\sMAUVE\b/i },
-    { name: "Purple Haze", pattern: /\bPURPLE\sHAZE\b/i },
-    { name: "Love Potion", pattern: /\bLOVE\sPOTION\b/i },
-    { name: "Baltic Sea", pattern: /\bBALTIC\sSEA\b/i },
-    { name: "Cloudburst", pattern: /\bCLOUDBURST\b/i },
-    { name: "Orange Popsicle", pattern: /\bORANGE\sPOPSICLE\b/i },
-    { name: "Purple Rose", pattern: /\bPURPLE\sROSE\b/i },
-    { name: "Bright White", pattern: /\bBRIGHT\sWHITE\b/i },
-    { name: "Cool White", pattern: /\bCOOL\sWHITE\b/i },
-    { name: "Classic White", pattern: /\bCLASSIC\sWHITE\b/i },
-    { name: "Black Beauty", pattern: /\bBLACK\sBEAUTY\b/i },
-    { name: "White", pattern: /\bWHITE\b/i, negations: [/\bBRIGHT\sWHITE\b/i, /\bCOOL\sWHITE\b/i, /\bCLASSIC\sWHITE\b/i] },
-    { name: "Black", pattern: /\bBLACK\b/i, negations: [/\bBLACK\sBEAUTY\b/i] },
-    { name: "Pink", pattern: /\bPINK\b/i },
-    { name: "Green", pattern: /\bGREEN\b/i, negations: [/\bASPG\sGRN\b/i] },
-    { name: "Blue", pattern: /\bBLUE\b/i, negations: [/\bSKY\sBLUE\b/i, /\bDRESS\sBLUE\b/i, /\bCHINA\sBLUE\b/i, /\bBLUE\sNIGHTS\b/i, /\bBALTIC\sSEA\b/i] },
-    { name: "Gray", pattern: /\bGRAY\b/i, negations: [/\bSILVER\sGRAY\b/i] },
-    { name: "Grey", pattern: /\bGREY\b/i, negations: [/\bSILVER\sGRAY\b/i] }, // Sama dengan Gray
-    { name: "Beige", pattern: /\bBEIGE\b/i, negations: [/\bLIGHT\sBEIGE\b/i] },
-    { name: "Turquoise", pattern: /\bTURQUOISE\b/i },
-    { name: "Charcoal", pattern: /\bCHARCOAL\b/i },
-    { name: "Cream", pattern: /\bCREAM\b/i },
-    { name: "Salsa", pattern: /\bSALSA\b/i },
-    { name: "Fedora", pattern: /\bFEDORA\b/i },
-    { name: "Caviar", pattern: /\bCAVIAR\b/i },
-    { name: "Tomato", pattern: /\bTOMATO\b/i },
-    { name: "Humus", pattern: /\bHUMUS\b/i },
-    { name: "Cork", pattern: /\bCORK\b/i },
-    { name: "Periscope", pattern: /\bPERISCOPE\b/i },
-    { name: "Mediterranea", pattern: /\bMEDITERRANEA\b/i },
-    { name: "Aspg Grn", pattern: /\bASPG\sGRN\b/i },
+    { name: "BLACK", pattern: /\bBLACK\b/i },
+    { name: "BLUE", pattern: /\bBLUE\b(?!\s+SKY)/i }, // Avoid matching "SKY BLUE"
+    { name: "BROWN", pattern: /\bBROWN\b/i },
+    { name: "CHARCOAL", pattern: /\bCHARCOAL\b/i },
+    { name: "CREAM", pattern: /\bCREAM\b/i },
+    { name: "GRAY", pattern: /\bGRA[Y|E]\b/i }, // Matches both GRAY and GREY
+    { name: "GREEN", pattern: /\bGREEN\b/i },
+    { name: "LIGHT BEIGE", pattern: /\bLIGHT\s+BEIGE\b/i },
+    { name: "NAVY", pattern: /\bNAVY\b/i },
+    { name: "NEUTRAL", pattern: /\bNEUTRAL\b/i },
+    { name: "OFF WHITE", pattern: /\bOFF\s+WHITE\b/i },
+    { name: "PINK", pattern: /\bPINK\b/i },
+    { name: "RED", pattern: /\bRED\b/i },
+    { name: "SILVER", pattern: /\bSILVER\b/i },
+    { name: "SKY BLUE", pattern: /\bSKY\s+BLUE\b/i },
+    { name: "TURQUOISE", pattern: /\bTURQUOISE\b/i },
+    { name: "WHITE", pattern: /\b(?:MILKY\s+WHITE|SNOW\s+WHITE|WHITE)\b/i }, // Includes variations
+    { name: "YELLOW", pattern: /\bYELLOW\b/i },
+  ];  const sifat = [
+    { name: "HO", pattern: /\b(?:HO|PHOBIC|HYDROPHOBIC)\b/i },
+    { name: "HI", pattern: /\b(?:HI|PHILIC|HYDROPHILIC)\b/i },
   ];
-
-  for (const color of colors) {
-    let negated = false;
-    if (color.negations) {
-      for (const negation of color.negations) {
-        if (negation.test(descUpper) && !foundAddOns.has(color.name)) {
-          negated = true;
-          break;
+  
+  const softness = [
+    { name: "SUPER SOFT", pattern: /\b(?:SUPER\s+SOFT|EXTRA\s+SOFT)\b/i },
+    { name: "SOFT", pattern: /\bSOFT\b(?!\s+(?:SUPER|EXTRA))/i }, // SOFT but not SUPER SOFT or EXTRA SOFT
+  ];  let result = [];
+  
+  // Find detected colors
+  let detectedColors = colors.filter(color => color.pattern.test(descUpper));
+  
+  // Find detected softness
+  let detectedSoftness = softness.filter(soft => soft.pattern.test(descUpper));
+  
+  // Find detected properties (HO/HI)
+  let detectedSifat = sifat.filter(s => s.pattern.test(descUpper));
+  
+  // Build combinations: COLOR + SOFTNESS + HI/HO
+  if (detectedColors.length > 0) {
+    for (const color of detectedColors) {
+      let combination = color.name;
+      
+      // Add softness if detected
+      if (detectedSoftness.length > 0) {
+        for (const soft of detectedSoftness) {
+          combination += ` ${soft.name}`;
         }
       }
-    }
-    if (negated) continue;
-
-    if (color.pattern.test(descUpper)) {
-      if (color.name === "Green" && foundAddOns.has("Aspg Grn")) continue;
-      let specificVariantExists = false;
-      if (color.name === "White" && (foundAddOns.has("Bright White") || foundAddOns.has("Cool White") || foundAddOns.has("Classic White"))) specificVariantExists = true;
-      if (color.name === "Black" && foundAddOns.has("Black Beauty")) specificVariantExists = true;
-      if (color.name === "Blue" && (foundAddOns.has("Sky Blue") || foundAddOns.has("Dress Blue") || foundAddOns.has("China Blue") || foundAddOns.has("Blue Nights") || foundAddOns.has("Baltic Sea"))) specificVariantExists = true;
-      if (color.name === "Gray" && foundAddOns.has("Silver Gray")) specificVariantExists = true;
-      if (color.name === "Grey" && foundAddOns.has("Silver Gray")) specificVariantExists = true;
-      if (color.name === "Beige" && foundAddOns.has("Light Beige")) specificVariantExists = true;
-
-      if (!specificVariantExists) {
-        foundAddOns.add(color.name === "Aspg Grn" ? "Green" : color.name);
-      }
-    }
-  }
-  if (foundAddOns.has("Gray") && foundAddOns.has("Grey")) {
-    foundAddOns.delete("Grey");
-  }
-
-  let finalAddOns = Array.from(foundAddOns);
-  let hasSpecificCoating = specificCoatings.some((sc) => finalAddOns.includes(sc));
-
-  if (hasSpecificCoating && finalAddOns.includes("Coated")) {
-    const tempDescNoSpecificCoating = descUpper
-      .replace(/\bPU\sCOATED\b/gi, "")
-      .replace(/\bPVC\sCOATED\b/gi, "")
-      .replace(/\bPE\sCOATED\b/gi, "")
-      .replace(/\bHDPE\sCOATED\b/gi, "")
-      .replace(/\bHDPE\sGLUE\sON\sTHE\sSURFACE\b/gi, "")
-      .replace(/\bTHERMOPLASTIC\sCOATED\b/gi, "");
-    if (!/\bCOATED\b/i.test(tempDescNoSpecificCoating) || /\bNOT\sCOATED\b/i.test(descUpper) || /\bUNCOATED\b/i.test(descUpper)) {
-      if (!((/\bCOATED\sWITH\sGLUE\b/i.test(descUpper) || /\bGLUE-COATED\b/i.test(descUpper)) && finalAddOns.includes("Adhesive"))) {
-        finalAddOns = finalAddOns.filter((a) => a !== "Coated");
-      }
-    }
-  }
-
-  if (finalAddOns.includes("Adhesive") && finalAddOns.includes("Coated")) {
-    if (/\bCOATED\sWITH\sGLUE\b/i.test(descUpper) || /\bGLUE-COATED\b/i.test(descUpper)) {
-      const tempDescNoGlueCoating = descUpper.replace(/\bCOATED\sWITH\sGLUE\b/gi, "").replace(/\bGLUE-COATED\b/gi, "");
-      let otherCoatingExists = specificCoatings.some((sc) => finalAddOns.includes(sc));
-      if (!otherCoatingExists) {
-        otherCoatingExists = /\bCOATED\b/i.test(tempDescNoGlueCoating) && !(/\bNOT\sCOATED\b/i.test(tempDescNoGlueCoating) || /\bUNCOATED\b/i.test(tempDescNoGlueCoating));
-      }
-      if (!otherCoatingExists) {
-        finalAddOns = finalAddOns.filter((a) => a !== "Coated");
-      }
-    }
-  }
-
-  const globalNegationIsPresent = isGloballyNegated("Impregnated") || isGloballyNegated("Coated") || isGloballyNegated("Laminated");
-  if (globalNegationIsPresent) {
-    const checkAndRemoveGeneral = (generalAddon, generalKeywordRegex, specificVersionsArray) => {
-      if (finalAddOns.includes(generalAddon)) {
-        let hasSpecificTypeInFinal = specificVersionsArray ? specificVersionsArray.some((sv) => finalAddOns.includes(sv)) : false;
-        let affirmedOutside = isAffirmedOutsideGlobalNegation(generalAddon, generalKeywordRegex);
-        if (hasSpecificTypeInFinal) {
-          if (!affirmedOutside) {
-            finalAddOns = finalAddOns.filter((a) => a !== generalAddon);
-          }
-        } else {
-          if (!affirmedOutside) {
-            finalAddOns = finalAddOns.filter((a) => a !== generalAddon);
-          }
+      
+      // Add properties if detected
+      if (detectedSifat.length > 0) {
+        for (const sifat of detectedSifat) {
+          combination += ` ${sifat.name}`;
         }
       }
-    };
-    checkAndRemoveGeneral("Coated", /\bCOATED\b/i, specificCoatings);
-    checkAndRemoveGeneral("Laminated", /\bLAMINATED\b/i, null);
-    checkAndRemoveGeneral("Impregnated", /\bIMPREGNATED\b/i, null);
+      
+      result.push(combination);
+    }
   }
-
-  if (finalAddOns.includes("Extra Soft") && finalAddOns.includes("Soft")) finalAddOns = finalAddOns.filter((a) => a !== "Soft");
-  if (finalAddOns.includes("Cotton Soft") && finalAddOns.includes("Soft")) finalAddOns = finalAddOns.filter((a) => a !== "Soft");
-  if (finalAddOns.includes("Ultra Lightweight") && finalAddOns.includes("Lightweight")) finalAddOns = finalAddOns.filter((a) => a !== "Lightweight");
-  if (finalAddOns.includes("Waterproof") && finalAddOns.includes("Water Resistant")) finalAddOns = finalAddOns.filter((a) => a !== "Water Resistant");
-
-  if (finalAddOns.length === 0) return "-";
-  return finalAddOns.sort().join("; ");
+  
+  // If no colors but softness/properties detected, add them independently
+  if (detectedColors.length === 0) {
+    if (detectedSoftness.length > 0) {
+      for (const soft of detectedSoftness) {
+        let combination = soft.name;
+        if (detectedSifat.length > 0) {
+          for (const sifat of detectedSifat) {
+            combination += ` ${sifat.name}`;
+          }
+        }
+        result.push(combination);
+      }
+    } else if (detectedSifat.length > 0) {
+      for (const sifat of detectedSifat) {
+        result.push(sifat.name);
+      }
+    }
+  }
+  
+  if (result.length === 0) return "-";
+  return result.join(" ");
 }
 
 // --- Fungsi Utama (Gabungan dan Modifikasi) ---
@@ -519,7 +603,7 @@ async function processExcelFile(inputFilePath, outputFilePath) {
         // Salin semua kolom asli dan tambahkan/timpa kolom baru
         let newRow = { ...row };
         newRow["GSM"] = gsm;
-        newRow["Width (cm)"] = width;
+        newRow["WIDTH"] = width;
         newRow["ITEM"] = itemType;
         newRow["ADD ON"] = addOn;
         return newRow;
@@ -527,7 +611,7 @@ async function processExcelFile(inputFilePath, outputFilePath) {
 
       // Menentukan header untuk output
       let outputHeaders;
-      const newColumns = ["GSM", "Width (cm)", "ITEM", "ADD ON"];
+      const newColumns = ["GSM", "WIDTH", "ITEM", "ADD ON"];
 
       if (jsonData.length > 0) {
         const originalHeaders = Object.keys(jsonData[0]);
